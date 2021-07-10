@@ -17,7 +17,6 @@ import { ISuggestMemoryService } from 'vs/editor/contrib/suggest/suggestMemory';
 import { IMenuService, IMenu } from 'vs/platform/actions/common/actions';
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
-import sinon = require('sinon');
 import { timeout } from 'vs/base/common/async';
 import { DisposableStore } from 'vs/base/common/lifecycle';
 import { CompletionItemKind, CompletionItemProvider, CompletionProviderRegistry } from 'vs/editor/common/modes';
@@ -27,8 +26,11 @@ import { Event } from 'vs/base/common/event';
 import assert = require('assert');
 import { GhostTextContext } from 'vs/editor/contrib/inlineCompletions/test/utils';
 import { Range } from 'vs/editor/common/core/range';
+import { TimeTravelScheduler } from 'vs/editor/contrib/inlineCompletions/test/timeTravelScheduler';
+import { ensureNoDisposablesAreLeakedInTestSuite } from 'vs/base/test/common/utils';
 
 suite('Suggest Widget Model', () => {
+	ensureNoDisposablesAreLeakedInTestSuite();
 
 	test('Active', async () => {
 		await withAsyncTestCodeEditorAndInlineCompletionsModel('',
@@ -141,9 +143,10 @@ async function withAsyncTestCodeEditorAndInlineCompletionsModel(
 		disposableStore.add(d);
 	}
 
-	let clock: sinon.SinonFakeTimers | undefined;
+	let scheduler: TimeTravelScheduler | undefined;
 	if (options.fakeClock) {
-		clock = sinon.useFakeTimers();
+		scheduler = new TimeTravelScheduler();
+		disposableStore.add(scheduler.installGlobally());
 	}
 	try {
 		const p = withAsyncTestCodeEditor(text, { ...options, serviceCollection }, async (editor, editorViewModel, instantiationService) => {
@@ -155,12 +158,10 @@ async function withAsyncTestCodeEditorAndInlineCompletionsModel(
 			model.dispose();
 		});
 
-		const p2 = clock?.runAllAsync();
+		await scheduler?.runUntilQueueEmptyAsync();
 
 		await p;
-		await p2;
 	} finally {
-		clock?.restore();
 		disposableStore.dispose();
 	}
 }
